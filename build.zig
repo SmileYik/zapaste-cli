@@ -41,11 +41,12 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
-    const zapaste = b.dependency("zapaste", .{
+    const zapaste = b.addModule("zapaste", .{
+        .root_source_file = b.path("src/zapaste/root.zig"),
         .target = target,
-        .optimize = optimize,
     });
-    mod.addImport("zapaste", zapaste.module("zapaste"));
+
+    mod.addImport("zapaste", zapaste);
 
     // Here we define an executable. An executable needs to have a root module
     // which needs to expose a `main` function. While we could add a main function

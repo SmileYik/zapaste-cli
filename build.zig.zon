@@ -31,12 +31,7 @@
     // `zig build --fetch` can be used to fetch all dependencies of a package, recursively.
     // Once all dependencies are fetched, `zig build` no longer requires
     // internet connectivity.
-    .dependencies = .{
-        .zapaste = .{
-            .url = "git+https://github.com/SmileYik/zapaste#f62833842453e8080eedfbf1c55086298fc062fa",
-            .hash = "zapaste-0.0.0-LTxPVDpYAwBV40HR49EkRmN2GP3Xjalho1T-uh3vc-1Y",
-        },
-    },
+    .dependencies = .{},
     .paths = .{
         "build.zig",
         "build.zig.zon",

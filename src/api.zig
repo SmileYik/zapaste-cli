@@ -8,8 +8,8 @@ const Allocator = std.mem.Allocator;
 
 // Zapaste entities
 
-pub const PageList = zapaste.common.PageList;
-pub const ApiResult = zapaste.common.Result.create;
+pub const PageList = zapaste.page_list.PageList;
+pub const ApiResult = zapaste.result.create;
 
 pub const Paste = zapaste.paste.Paste;
 pub const PasteSummary = Paste.Summary;
