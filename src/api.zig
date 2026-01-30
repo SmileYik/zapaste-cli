@@ -1,9 +1,8 @@
 const std = @import("std");
 const zapaste = @import("zapaste");
-const FormData = @import("formdata.zig");
+const http = @import("http.zig");
 
-const http = std.http;
-const HttpClient = http.Client;
+const HttpClient = std.http.Client;
 const Allocator = std.mem.Allocator;
 
 // Zapaste entities
@@ -16,9 +15,14 @@ pub const PasteSummary = Paste.Summary;
 
 pub const File = zapaste.file.File;
 
-pub const PasswordModel = struct { password: ?[]const u8 = null };
+pub const PasswordModel = struct {
+    password: ?[]const u8 = null,
+};
 
-pub const UpdatePasteModel = struct { password: ?[]const u8 = null, paste: ?Paste = null };
+pub const UpdatePasteModel = struct {
+    password: ?[]const u8 = null,
+    paste: ?Paste = null,
+};
 
 pub const PasteModel = struct {
     paste: ?Paste = null,
@@ -47,21 +51,33 @@ const API_DOWNLOAD_FILE = "{s}/api/paste/{s}/file/name/{s}";
 
 // API implements
 
+pub const Options = struct {
+    allocator: Allocator,
+    base_url: []const u8,
+    authorization: ?[]const u8 = null,
+};
+
 pub const PasteClient = struct {
     allocator: Allocator,
     client: std.http.Client,
     base_url: []const u8,
+    authorization: ?[]const u8,
 
-    pub fn init(allocator: Allocator, base_url: []const u8) PasteClient {
+    pub fn init(options: Options) PasteClient {
+        const allocator = options.allocator;
+        const base_url = options.base_url;
+        const authorization = options.authorization;
+
         return .{
             .allocator = allocator,
             .client = std.http.Client{ .allocator = allocator },
             .base_url = base_url,
+            .authorization = authorization,
         };
     }
 
     pub fn deinit(self: *PasteClient) void {
-        self.client.deinit();
+        &self.client.deinit();
     }
 
     /// Get public paste list.
@@ -73,7 +89,14 @@ pub const PasteClient = struct {
             .{ self.base_url, page_no, page_size },
         );
 
-        return self.request(.GET, url, .None, ApiResult(PageList(PasteSummary)));
+        return http.request(ApiResult(PageList(PasteSummary)), .{
+            .method = .GET,
+            .url = url,
+            .body = .None,
+            .allocator = self.allocator,
+            .authorization = self.authorization,
+            .client = &self.client,
+        });
     }
 
     /// get paste
@@ -89,15 +112,17 @@ pub const PasteClient = struct {
         var body_array = try parseEntity2Json(self.allocator, password_model);
         defer body_array.deinit(self.allocator);
 
-        return self.request(
-            .POST,
-            url,
-            .{ .Manual = .{
+        return http.request(ApiResult(PasteModel), .{
+            .method = .POST,
+            .url = url,
+            .body = .{ .Manual = .{
                 .content_type = HTTP_CONTENT_TYPE_JSON,
                 .body = body_array.items,
             } },
-            ApiResult(PasteModel),
-        );
+            .allocator = self.allocator,
+            .authorization = self.authorization,
+            .client = &self.client,
+        });
     }
 
     /// create paste with files
@@ -109,7 +134,7 @@ pub const PasteClient = struct {
             .{self.base_url},
         );
 
-        var body = try FormData.init(self.allocator);
+        var body = try http.FormData.init(self.allocator);
         defer body.deinit();
 
         var paste_json = try parseEntity2Json(self.allocator, paste);
@@ -122,12 +147,14 @@ pub const PasteClient = struct {
             }
         }
 
-        return self.request(
-            .POST,
-            url,
-            .{ .FormData = body },
-            ApiResult(PasteModel),
-        );
+        return http.request(ApiResult(PasteModel), .{
+            .method = .POST,
+            .allocator = self.allocator,
+            .client = &self.client,
+            .body = .{ .FormData = body },
+            .url = url,
+            .authorization = self.authorization,
+        });
     }
 
     /// update paste with files
@@ -145,7 +172,7 @@ pub const PasteClient = struct {
             .{ self.base_url, paste_name },
         );
 
-        var body = try FormData.init(self.allocator);
+        var body = try http.FormData.init(self.allocator);
         defer body.deinit();
 
         const update_model: UpdatePasteModel = .{ .password = password, .paste = paste };
@@ -158,13 +185,14 @@ pub const PasteClient = struct {
                 try body.appendFile("file", path);
             }
         }
-
-        return self.request(
-            .PUT,
-            url,
-            .{ .FormData = body },
-            ApiResult(PasteModel),
-        );
+        return http.request(ApiResult(PasteModel), .{
+            .allocator = self.allocator,
+            .method = .PUT,
+            .url = url,
+            .authorization = self.authorization,
+            .body = .{ .FormData = body },
+            .client = &self.client,
+        });
     }
 
     /// delete Paste
@@ -180,124 +208,21 @@ pub const PasteClient = struct {
         const body = try parseEntity2Json(self.allocator, model);
         defer body.deinit(self.allocator);
 
-        return self.request(
-            .POST,
-            url,
-            .{
-                .Manual = .{
-                    .content_type = "application/json",
-                    .body = body.items,
-                },
-            },
-            ApiResult(u8),
-        );
-    }
-
-    // 内部通用请求工具函数
-    fn request(
-        self: *PasteClient,
-        method: std.http.Method,
-        url_str: []const u8,
-        body: BodyData,
-        comptime T: type,
-    ) !std.json.Parsed(T) {
-        std.debug.print("{s}\n", .{url_str});
-        const uri = try std.Uri.parse(url_str);
-
-        var req = try self.client.request(
-            method,
-            uri,
-            .{
-                .headers = .{
-                    .accept_encoding = .{ .override = "" },
-                },
-            },
-        );
-        defer req.deinit();
-
-        switch (body) {
-            .None => {
-                try req.sendBodiless();
-            },
-            .Manual => |b| {
-                req.headers.content_type = .{
-                    .override = b.content_type,
-                };
-                try req.sendBodyComplete(b.body);
-            },
-            .FormData => |form_| {
-                var form = form_;
-                req.headers.content_type = .{
-                    .override = form.getContentType() catch "",
-                };
-                try req.sendBodyComplete(form.getBody() catch "");
-            },
-        }
-
-        // var redirect_buffer: [4 * 1024]u8 = undefined;
-        var response = try req.receiveHead(&.{});
-        if (response.head.status.class() != .success) {
-            var result_buffer: [4096]u8 = undefined;
-            const error_msg = try std.fmt.bufPrint(&result_buffer,
-                \\{{ "code": {d}, "message": "{s}" }}
-            , .{
-                @intFromEnum(response.head.status),
-                response.head.status.phrase() orelse "",
-            });
-            return std.json.parseFromSlice(
-                T,
-                self.allocator,
-                error_msg,
-                .{ .ignore_unknown_fields = true },
-            );
-        }
-
-        // header
-        var it = response.head.iterateHeaders();
-        while (it.next()) |header| {
-            std.debug.print("{s}: {s}\n", .{ header.name, header.value });
-        }
-
-        // body
-        var response_buffer: [4 * 1024]u8 = undefined;
-        var reader = response.reader(&response_buffer);
-        var response_body = try std.ArrayList(u8).initCapacity(self.allocator, 10 * 1024 * 1024);
-        defer response_body.deinit(self.allocator);
-
-        while (reader.takeArray(response_buffer.len)) |bytes| {
-            try response_body.appendSlice(self.allocator, bytes);
-        } else |err| switch (err) {
-            std.io.Reader.Error.EndOfStream => {
-                try response_body.appendSlice(self.allocator, reader.buffer[0..reader.end]);
-            },
-            else => return err,
-        }
-        std.debug.print("{s}\n", .{response_body.items});
-        return std.json.parseFromSlice(
-            T,
-            self.allocator,
-            response_body.items,
-            .{ .ignore_unknown_fields = true },
-        );
+        return http.request(ApiResult(u8), .{
+            .allocator = self.allocator,
+            .method = .POST,
+            .url = url,
+            .authorization = self.authorization,
+            .body = .{ .Manual = .{
+                .content_type = HTTP_CONTENT_TYPE_JSON,
+                .body = body.items,
+            } },
+            .client = &self.client,
+        });
     }
 };
 
 // HTTP things
-
-const BodyType = enum {
-    None,
-    FormData,
-    Manual,
-};
-
-const BodyData = union(BodyType) {
-    None,
-    FormData: FormData,
-    Manual: struct {
-        body: []u8,
-        content_type: []const u8,
-    },
-};
 
 const HTTP_CONTENT_TYPE_JSON = "application/json";
 
