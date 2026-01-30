@@ -5,8 +5,15 @@ const Array = std.ArrayList(u8);
 
 const Self = @This();
 
-const prng = std.Random.DefaultPrng.init(@intCast(std.time.timestamp()));
 const NEW_LIEN = "\r\n";
+
+var prng: ?std.Random.DefaultPrng = null;
+inline fn getPrng() *std.Random.DefaultPrng {
+    if (prng == null) {
+        prng = std.Random.DefaultPrng.init(@intCast(std.time.timestamp()));
+    }
+    return &prng.?;
+}
 
 pub const UploadFile = struct {
     filename: []const u8,
@@ -18,23 +25,20 @@ pub const UploadFile = struct {
 
 allocator: Allocator,
 array: Array,
-writer: std.io.Writer,
 boundary: []const u8,
 finished: bool,
 content_type: ?[]const u8 = null,
 
 pub fn init(allocator: Allocator) !Self {
-    var array = try Array.initCapacity(allocator, 4 * 1024);
     return .{
         .allocator = allocator,
-        .array = array,
-        .writer = array.writer(allocator),
+        .array = try Array.initCapacity(allocator, 4 * 1024),
         .boundary = try randomBoundary(allocator, 16),
         .finished = false,
     };
 }
 
-pub fn deinit(self: Self) void {
+pub fn deinit(self: *Self) void {
     self.allocator.free(self.boundary);
     self.array.deinit(self.allocator);
     if (self.content_type) |content_type| {
@@ -49,14 +53,14 @@ pub fn appendString(
 ) !void {
     if (self.finished) return error.FinishedFormData;
 
-    try self.writer.print(
+    try self.array.writer(self.allocator).print(
         \\--{s}
         \\Content-Disposition: form-data; name="{s}"
         \\
         \\
         \\{s}
         \\
-    , self.boundary, key, value);
+    , .{ self.boundary, key, value });
 }
 
 pub fn appendFile(
@@ -67,11 +71,11 @@ pub fn appendFile(
     if (self.finished) return error.FinishedFormData;
 
     const filename = std.fs.path.basename(filepath);
-    const data = try std.fs.cwd().readFileAlloc(self.allocator, filepath, @bitCast(-1));
+    const data = try std.fs.cwd().readFileAlloc(self.allocator, filepath, @as(usize, @bitCast(@as(i64, -1))));
     try self.appendFileData(key, .{
         .filename = filename,
         .data = data,
-        .mimetype = "",
+        .mimetype = "application/octet-stream",
     });
 }
 
@@ -82,28 +86,27 @@ pub fn appendFileData(
 ) !void {
     if (self.finished) return error.FinishedFormData;
 
-    try self.writer.print(
+    try self.array.writer(self.allocator).print(
         \\--{s}
         \\
         \\Content-Disposition: form-data; name="{s}"; filename="{s}"
-        \\
         \\Content-Type: {s}
         \\
         \\{s}
         \\
-    ,
+    , .{
         self.boundary,
         key,
         filedata.filename,
         filedata.mimetype,
         filedata.data,
-    );
+    });
 }
 
 pub fn getBody(self: *Self) ![]u8 {
     if (!self.finished) {
         self.finished = true;
-        try self.writer.print("--{s}--\r\n", .{self.boundary});
+        try self.array.writer(self.allocator).print("--{s}--\r\n", .{self.boundary});
     }
     return self.array.items;
 }
@@ -122,9 +125,10 @@ pub fn getContentType(self: *Self) ![]const u8 {
 inline fn randomBoundary(allocator: std.mem.Allocator, length: usize) ![]u8 {
     const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     const prefix = "----ZapasteBoundary";
-    const random = prng.random();
+    const random = getPrng().random();
 
     var result = try allocator.alloc(u8, prefix.len + length);
+    @memcpy(result, prefix);
     for (0..length) |i| {
         const random_index = random.uintAtMost(usize, charset.len - 1);
         result[prefix.len + i] = charset[random_index];

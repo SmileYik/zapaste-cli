@@ -86,10 +86,11 @@ pub const PasteClient = struct {
         );
 
         const password_model: PasswordModel = .{ .password = password };
-        const body_array = try pasteEntity2Json(PasswordModel, self.allocator, password_model);
+        var body_array = try parseEntity2Json(self.allocator, password_model);
+        defer body_array.deinit(self.allocator);
 
         return self.request(
-            .GET,
+            .POST,
             url,
             .{ .Manual = .{
                 .content_type = HTTP_CONTENT_TYPE_JSON,
@@ -99,39 +100,93 @@ pub const PasteClient = struct {
         );
     }
 
-    /// 创建新的 Paste
-    pub fn createPaste(self: *PasteClient, paste: Paste) !std.json.Parsed(ApiResult(PasteModel)) {
-        const url = try std.fmt.allocPrint(self.allocator, "{s}/api/paste", .{self.base_url});
-        defer self.allocator.free(url);
-
-        const body = try std.json.stringifyAlloc(self.allocator, paste, .{ .emit_null_optional_fields = false });
-        defer self.allocator.free(body);
-
-        return self.request(.POST, url, body, ApiResult(PasteModel));
-    }
-
-    /// 删除 Paste
-    pub fn deletePaste(self: *PasteClient, name: []const u8, password: ?[]const u8) !std.json.Parsed(ApiResult(u8)) {
+    /// create paste with files
+    pub fn createPaste(self: *PasteClient, paste: Paste, filepaths: ?[]const []const u8) !std.json.Parsed(ApiResult(PasteModel)) {
         var path_buf: [1024]u8 = undefined;
-        var url: []const u8 = "";
-        var body: ?[]const u8 = null;
+        const url = try std.fmt.bufPrint(
+            &path_buf,
+            API_CREATE_PASTE,
+            .{self.base_url},
+        );
 
-        if (password) |pw| {
-            url = try std.fmt.bufPrint(&path_buf, "{s}/api/paste/{s}/delete", .{ self.base_url, name });
-            const payload = .{ .password = pw };
-            body = try std.json.stringifyAlloc(self.allocator, payload, .{});
-        } else {
-            url = try std.fmt.bufPrint(&path_buf, "{s}/api/paste/{s}", .{ self.base_url, name });
+        var body = try FormData.init(self.allocator);
+        defer body.deinit();
+
+        var paste_json = try parseEntity2Json(self.allocator, paste);
+        defer paste_json.deinit(self.allocator);
+
+        try body.appendString("paste", paste_json.items);
+        if (filepaths) |paths| {
+            for (paths) |path| {
+                try body.appendFile("file", path);
+            }
         }
-        defer if (body) |b| self.allocator.free(b);
 
         return self.request(
-            if (password != null) .POST else .DELETE,
+            .POST,
+            url,
+            .{ .FormData = body },
+            ApiResult(PasteModel),
+        );
+    }
+
+    /// update paste with files
+    pub fn updatePaste(
+        self: *PasteClient,
+        paste_name: []const u8,
+        password: ?[]const u8,
+        paste: Paste,
+        filepaths: ?[]const []const u8,
+    ) !std.json.Parsed(ApiResult(PasteModel)) {
+        var path_buf: [1024]u8 = undefined;
+        const url = try std.fmt.bufPrint(
+            &path_buf,
+            API_UPDATE_PASTE,
+            .{ self.base_url, paste_name },
+        );
+
+        var body = try FormData.init(self.allocator);
+        defer body.deinit();
+
+        const update_model: UpdatePasteModel = .{ .password = password, .paste = paste };
+        var paste_json = try parseEntity2Json(self.allocator, update_model);
+        defer paste_json.deinit(self.allocator);
+
+        try body.appendString("paste", paste_json.items);
+        if (filepaths) |paths| {
+            for (paths) |path| {
+                try body.appendFile("file", path);
+            }
+        }
+
+        return self.request(
+            .PUT,
+            url,
+            .{ .FormData = body },
+            ApiResult(PasteModel),
+        );
+    }
+
+    /// delete Paste
+    pub fn deletePaste(self: *PasteClient, name: []const u8, password: ?[]const u8) !std.json.Parsed(ApiResult(u8)) {
+        var path_buf: [1024]u8 = undefined;
+        const url = try std.fmt.bufPrint(
+            &path_buf,
+            API_DELETE_PASTE,
+            .{ self.base_url, name },
+        );
+
+        const model: PasswordModel = .{ .password = password };
+        const body = try parseEntity2Json(self.allocator, model);
+        defer body.deinit(self.allocator);
+
+        return self.request(
+            .POST,
             url,
             .{
                 .Manual = .{
                     .content_type = "application/json",
-                    .body = body,
+                    .body = body.items,
                 },
             },
             ApiResult(u8),
@@ -182,7 +237,20 @@ pub const PasteClient = struct {
         // var redirect_buffer: [4 * 1024]u8 = undefined;
         var response = try req.receiveHead(&.{});
         if (response.head.status.class() != .success) {
-            return error.HttpError;
+            std.debug.print("{}\n", .{response.head.status});
+            var result_buffer: [4096]u8 = undefined;
+            const error_msg = try std.fmt.bufPrint(&result_buffer,
+                \\ {{ "code": {d}, "message": {s} }}
+            , .{
+                @intFromEnum(response.head.status),
+                response.head.status.phrase() orelse "",
+            });
+            return std.json.parseFromSlice(
+                T,
+                self.allocator,
+                error_msg,
+                .{ .ignore_unknown_fields = true },
+            );
         }
 
         // header
@@ -234,12 +302,9 @@ const BodyData = union(BodyType) {
 
 const HTTP_CONTENT_TYPE_JSON = "application/json";
 
-inline fn pasteEntity2Json(comptime T: type, allocator: Allocator, value: T) !std.ArrayList(u8) {
+inline fn parseEntity2Json(allocator: Allocator, value: anytype) !std.ArrayList(u8) {
     var array = try std.ArrayList(u8).initCapacity(allocator, 4 * 1024);
     const formatter = std.json.fmt(value, .{ .emit_null_optional_fields = true });
-
-    const result = try std.fmt.allocPrint(allocator, "{f}", formatter);
-    defer allocator.free(result);
-    try array.appendSlice(allocator, result);
+    try array.writer(allocator).print("{f}", .{formatter});
     return array;
 }
