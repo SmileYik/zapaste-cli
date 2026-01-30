@@ -71,7 +71,11 @@ pub fn appendFile(
     if (self.finished) return error.FinishedFormData;
 
     const filename = std.fs.path.basename(filepath);
-    const data = try std.fs.cwd().readFileAlloc(self.allocator, filepath, @as(usize, @bitCast(@as(i64, -1))));
+    const data = try std.fs.cwd().readFileAlloc(
+        self.allocator,
+        filepath,
+        std.math.maxInt(usize),
+    );
     try self.appendFileData(key, .{
         .filename = filename,
         .data = data,
