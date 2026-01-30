@@ -1,0 +1,60 @@
+name: Zig CI
+
+on:
+  push:
+    branches: [ "master" ]
+    paths:
+      - 'src/**'
+      - 'build.*'
+      - '.github/workflows/zig.yml'
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - 'src/**'
+      - 'build.*'
+      - '.github/workflows/zig.yml'
+
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: 
+        - "x86_64-linux-gnu"
+        - "x86_64-linux-musl"
+        - "x86_64-macos"
+        - "x86_64-freebsd"
+        - "x86_64-netbsd"
+        - "x86_64-windows"
+        - "arm-freebsd"
+        - "arm-netbsd"
+        - "aarch64-linux-gnu"
+        - "aarch64-linux-musl"
+        - "aarch64-macos"
+        - "aarch64-freebsd"
+        - "aarch64-netbsd"
+        - "aarch64-windows"
+        - "riscv64-linux-gnu"
+        - "riscv64-linux-musl"
+        - "riscv64-freebsd"
+        - "loongarch64-linux-gnu"
+        - "loongarch64-linux-musl"
+        - "powerpc-freebsd"
+        - "powerpc-netbsd"
+        - "riscv32-linux-gnu"
+        - "riscv32-linux-musl"
+
+    steps:
+
+    - name: Checkout
+      uses: actions/checkout@v5
+
+    - name: Setup Zig
+      uses: mlugg/setup-zig@v2.1.0
+      with:
+        version: "0.15.2"
+
+    - name: Build
+      run: zig build -Doptimize=ReleaseSmall -Dtarget=${{ matrix.target }}
