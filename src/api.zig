@@ -237,10 +237,9 @@ pub const PasteClient = struct {
         // var redirect_buffer: [4 * 1024]u8 = undefined;
         var response = try req.receiveHead(&.{});
         if (response.head.status.class() != .success) {
-            std.debug.print("{}\n", .{response.head.status});
             var result_buffer: [4096]u8 = undefined;
             const error_msg = try std.fmt.bufPrint(&result_buffer,
-                \\ {{ "code": {d}, "message": {s} }}
+                \\{{ "code": {d}, "message": "{s}" }}
             , .{
                 @intFromEnum(response.head.status),
                 response.head.status.phrase() orelse "",

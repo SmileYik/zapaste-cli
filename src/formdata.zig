@@ -128,7 +128,7 @@ inline fn randomBoundary(allocator: std.mem.Allocator, length: usize) ![]u8 {
     const random = getPrng().random();
 
     var result = try allocator.alloc(u8, prefix.len + length);
-    @memcpy(result, prefix);
+    @memcpy(result[0..prefix.len], prefix);
     for (0..length) |i| {
         const random_index = random.uintAtMost(usize, charset.len - 1);
         result[prefix.len + i] = charset[random_index];
