@@ -56,7 +56,9 @@ const Item = struct {
     }
 };
 
+// Args mode
 const Mode = enum {
+    help,
     upload,
     create,
     update,
@@ -144,6 +146,10 @@ const ITEM_PASTE_PRIVATE = actionSetBoolItem("paste.private", "--private", &.{"-
 const ITEM_PASTE_READ_ONLY = actionSetBoolItem("paste.read_only", "--readonly", &.{"-r"}, "设置剪切板仅可读, 后续将无法修改此剪切板内容");
 const ITEM_PASTE_BURN_AFTER_READS = actionSetItem("paste.burn_after_reads", "--burn-after-reads", &.{ "-bar", "-B" }, "设置剪切板阅读量到达指定数量后自动销毁");
 
+const OptionsHelp = struct {
+    help_message: ?std.ArrayList(u8) = null,
+};
+
 const OptionsUpdate = struct {
     paste: api.Paste = .{},
     filepaths: ?std.ArrayList([]const u8) = null,
@@ -182,6 +188,7 @@ options_update: OptionsUpdate = .{},
 options_create: OptionsCreate = .{},
 options_reset: OptionsReset = .{},
 options_upload: OptionsUpload = .{},
+options_help: OptionsHelp = .{},
 
 pub fn init(allocator: Allocator) !Args {
     var iter = try std.process.argsWithAllocator(allocator);
@@ -215,6 +222,10 @@ pub fn deinit(self: *Args) void {
     if (self.options_upload.filepaths) |filepaths| {
         var f = filepaths;
         f.deinit(self.allocator);
+    }
+    if (self.options_help.help_message) |str| {
+        var a = str;
+        a.deinit(self.allocator);
     }
 
     self.unknown_args.deinit(self.allocator);
@@ -521,9 +532,9 @@ inline fn helpItem(
                 comptime _: []const u8,
                 _: []const []const u8,
             ) !void {
-                const allocator = std.heap.page_allocator;
+                const allocator = args.allocator;
                 var text = try std.ArrayList(u8).initCapacity(allocator, 4 * 1024);
-                defer text.deinit(allocator);
+                errdefer text.deinit(allocator);
 
                 var writer = text.writer(allocator);
                 const basename = args.args.items[0];
@@ -586,7 +597,8 @@ inline fn helpItem(
                     \\
                 , .{ basename, basename, basename, basename, basename, basename, basename });
 
-                std.log.info("\n{s}", .{text.items});
+                args.mode = .help;
+                args.options_help.help_message = text;
             }
         }.h,
     };
