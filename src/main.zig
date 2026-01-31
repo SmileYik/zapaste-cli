@@ -2,27 +2,28 @@ const std = @import("std");
 const zapaste_cli = @import("zapaste_cli");
 
 pub fn main() !void {
-    var client = zapaste_cli.api.PasteClient.init(.{
-        .allocator = std.heap.page_allocator,
-        .base_url = "https://paste-demo.smileyik.eu.org",
-    });
-    const result = try client.getPasteList(1, 4);
-    std.debug.print("{any}\n", .{result});
-    const paste = try client.getPaste("vagueid-hammerhead", null);
-    defer paste.deinit();
-    std.debug.print("{any}\n", .{paste.value});
+    // var client = zapaste_cli.api.PasteClient.init(.{
+    //     .allocator = std.heap.page_allocator,
+    //     .base_url = "https://paste-demo.smileyik.eu.org",
+    // });
+    // const result = try client.getPasteList(1, 4);
+    // std.debug.print("{any}\n", .{result});
+    // const paste = try client.getPaste("vagueid-hammerhead", null);
+    // defer paste.deinit();
+    // std.debug.print("{any}\n", .{paste.value});
 
-    const created_paste = try client.createPaste(.{ .name = "test" }, null);
-    defer created_paste.deinit();
-    // std.debug.print("{any}\n", .{created_paste.value.data});
+    // const created_paste = try client.createPaste(.{ .name = "test" }, null);
+    // defer created_paste.deinit();
+    // // std.debug.print("{any}\n", .{created_paste.value.data});
 
-    const created_paste2 = try client.createPaste(
-        .{ .name = "test-3" },
-        &.{"zig-out/bin/zapaste-cli"},
-    );
-    defer created_paste2.deinit();
+    // const created_paste2 = try client.createPaste(
+    //     .{ .name = "test-3" },
+    //     &.{"zig-out/bin/zapaste-cli"},
+    // );
+    // defer created_paste2.deinit();
     // std.debug.print("{any}\n", .{created_paste2.value.data});
     var args = try zapaste_cli.Args.init(std.heap.page_allocator);
     try args.parseArgs();
-    std.debug.print("{s}\n", .{args.base_url orelse ""});
+    std.debug.print("mode: {any}\n", .{args.mode});
+    std.debug.print("{any}\n{any}\n", .{ args.options_upload, args.options_upload.filepaths.?.items });
 }
