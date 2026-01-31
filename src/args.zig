@@ -34,7 +34,7 @@ const Item = struct {
     ) anyerror!void,
 
     fn isMatch(self: Item, name: []const u8) bool {
-        if (self.name.len == 0 or
+        if (self.isRequiredItem() or
             std.ascii.eqlIgnoreCase(self.name, name))
         {
             return true;
@@ -45,6 +45,14 @@ const Item = struct {
             }
         }
         return false;
+    }
+
+    fn isRequiredItem(self: Item) bool {
+        return self.name.len == 0;
+    }
+
+    fn isSubcommandItem(self: Item) bool {
+        return self.children.len != 0;
     }
 };
 
@@ -60,58 +68,81 @@ const ITEMS: []const Item = &.{
     helpItem("--help", &.{"-h"}, "查看帮助", &ITEMS),
     actionSetItem("base_url", "--url", &.{"-u"}, "设置基础URL"),
     actionSetItem("token", "--token", &.{"-t"}, "设置Token"),
-    subcommandItem("options_update", "update", &.{"u"}, "上传文件至剪切板.", &(&[_]Item{
+    subcommandItem("options_update", "update", &.{"u"}, "更新剪切板.", &(&[_]Item{
+        actionRequiredItem("target_paste_name", "剪切板名称"),
         ITEM_FILEPATHS,
-        ITEM_PASTE_NAME,
         ITEM_PASTE_PASSWORD,
         ITEM_PASTE_NEW_NAME,
-        ITEM_PASTE_NEW_PASSWORD_REAL,
+        ITEM_PASTE_NEW_PASSWORD,
         ITEM_PASTE_CONTENT,
         ITEM_PASTE_CONTENT_TYPE,
         ITEM_PASTE_PRIVATE,
         ITEM_PASTE_READ_ONLY,
         ITEM_PASTE_BURN_AFTER_READS,
     })),
-    subcommandItem("options_create", "create", &.{"c"}, "新建剪切板, 可以指定剪切板名称但是不保证剪切板名称为设定好的名称.", &(&[_]Item{
-        ITEM_FILEPATHS,
-        ITEM_PASTE_NEW_NAME_REAL,
-        ITEM_PASTE_NEW_PASSWORD_REAL,
-        ITEM_PASTE_CONTENT,
-        ITEM_PASTE_CONTENT_TYPE,
-        ITEM_PASTE_PRIVATE,
-        ITEM_PASTE_READ_ONLY,
-        ITEM_PASTE_BURN_AFTER_READS,
-    })),
-    subcommandItem("options_reset", "reset", &.{"r"}, "重置剪切板.", &(&[_]Item{
-        ITEM_FILEPATHS,
-        ITEM_PASTE_NAME,
-        ITEM_PASTE_PASSWORD,
-        ITEM_PASTE_CONTENT,
-        ITEM_PASTE_CONTENT_TYPE,
-        ITEM_PASTE_PRIVATE,
-        ITEM_PASTE_READ_ONLY,
-        ITEM_PASTE_BURN_AFTER_READS,
-        actionSetBoolItem("create_if_not_exists", "--create-if-not-exists", &.{ "-C", "-cine" }, "在剪切板不存在时创建它"),
-        actionSetBoolItem("clean_attachments", "--clean-attachments", &.{ "-Ca", "-ca" }, "清空剪切板附件"),
-    })),
+    subcommandItem(
+        "options_create",
+        "create",
+        &.{"c"},
+        "新建剪切板, 可以指定剪切板名称但是不保证剪切板名称为设定好的名称.",
+        &(&[_]Item{
+            actionRequiredItem("paste.content", "剪切板内容"),
+            ITEM_FILEPATHS,
+            ITEM_PASTE_NEW_NAME_REAL,
+            ITEM_PASTE_NEW_PASSWORD_REAL,
+            ITEM_PASTE_CONTENT_TYPE,
+            ITEM_PASTE_PRIVATE,
+            ITEM_PASTE_READ_ONLY,
+            ITEM_PASTE_BURN_AFTER_READS,
+        }),
+    ),
+    subcommandItem(
+        "options_reset",
+        "reset",
+        &.{"r"},
+        "重置剪切板.",
+        &(&[_]Item{
+            actionRequiredItem("target_paste_name", "剪切板名称"),
+            ITEM_FILEPATHS,
+            ITEM_PASTE_PASSWORD,
+            ITEM_PASTE_CONTENT,
+            ITEM_PASTE_CONTENT_TYPE,
+            ITEM_PASTE_PRIVATE,
+            ITEM_PASTE_READ_ONLY,
+            ITEM_PASTE_BURN_AFTER_READS,
+            actionSetBoolItem("create_if_not_exists", "--create-if-not-exists", &.{ "-C", "-cine" }, "在剪切板不存在时创建它"),
+            actionSetBoolItem("clean_attachments", "--clean-attachments", &.{ "-CA", "-ca" }, "清空剪切板中所有的附件"),
+        }),
+    ),
+    subcommandItem(
+        "options_upload",
+        "upload",
+        &.{},
+        "上传文件至指定剪切板, 如果指定剪切板不存在则将失败!",
+        &(&[_]Item{
+            actionRequiredItem("target_paste_name", "剪切板名称"),
+            ITEM_PASTE_PASSWORD,
+            ITEM_FILEPATHS,
+        }),
+    ),
 };
 
-const ITEM_FILEPATHS = actionSetItem("filepaths", "--file", &.{"-F"}, "添加要上传的文件的路径");
+const ITEM_FILEPATHS = actionSetItem("filepaths", "--file", &.{"-f"}, "添加要上传的文件的路径, 可以通过多个本选项添加多个文件");
 // paste current name and password
 const ITEM_PASTE_NAME = actionSetItem("target_paste_name", "--name", &.{"-n"}, "剪切板名称");
-const ITEM_PASTE_PASSWORD = actionSetItem("verify_password", "--password", &.{"-p"}, "剪切板密码");
+const ITEM_PASTE_PASSWORD = actionSetItem("verify_password", "--password", &.{"-p"}, "剪切板密码, 如果该剪切板含有密码则需要输入");
 // paste new name and password
-const ITEM_PASTE_NEW_NAME = actionSetItem("paste.name", "--new-name", &.{"-nn"}, "设置剪切板新名称, 不保证新名称一定为所设置的名称");
-const ITEM_PASTE_NEW_PASSWORD = actionSetItem("paste.password", "--new-password", &.{"-np"}, "设置剪切板新密码");
+const ITEM_PASTE_NEW_NAME = actionSetItem("paste.name", "--new-name", &.{ "-nn", "-N" }, "设置剪切板新名称, 不保证新名称一定为所设置的名称, 若不指定则为随机名称");
+const ITEM_PASTE_NEW_PASSWORD = actionSetItem("paste.password", "--new-password", &.{"-P"}, "设置剪切板新密码");
 // paste new name and password with real fields in Paste type.
 const ITEM_PASTE_NEW_NAME_REAL = actionSetItem("paste.name", "--name", &.{"-n"}, "设置剪切板新名称, 不保证新名称一定为所设置的名称");
 const ITEM_PASTE_NEW_PASSWORD_REAL = actionSetItem("paste.password", "--password", &.{"-p"}, "剪切板密码");
 // other paste things
 const ITEM_PASTE_CONTENT = actionSetItem("paste.content", "--content", &.{"-c"}, "设置剪切板内容");
-const ITEM_PASTE_CONTENT_TYPE = actionSetItem("paste.content_type", "--content-type", &.{"-ct"}, "设置剪切板内容类型");
-const ITEM_PASTE_PRIVATE = actionSetBoolItem("paste.private", "--private", &.{"-P"}, "设置剪切板为私人可见");
-const ITEM_PASTE_READ_ONLY = actionSetBoolItem("paste.read_only", "--readonly", &.{"--r"}, "设置剪切板仅可读");
-const ITEM_PASTE_BURN_AFTER_READS = actionSetItem("paste.burn_after_reads", "--burn-after-reads", &.{"-bar"}, "设置剪切板阅读量到达指定数量后自动销毁");
+const ITEM_PASTE_CONTENT_TYPE = actionSetItem("paste.content_type", "--content-type", &.{"-t"}, "设置剪切板内容类型");
+const ITEM_PASTE_PRIVATE = actionSetBoolItem("paste.private", "--private", &.{"-pr"}, "设置剪切板为私人可见");
+const ITEM_PASTE_READ_ONLY = actionSetBoolItem("paste.read_only", "--readonly", &.{"-r"}, "设置剪切板仅可读, 后续将无法修改此剪切板内容");
+const ITEM_PASTE_BURN_AFTER_READS = actionSetItem("paste.burn_after_reads", "--burn-after-reads", &.{ "-bar", "-B" }, "设置剪切板阅读量到达指定数量后自动销毁");
 
 const OptionsUpdate = struct {
     paste: api.Paste = .{},
@@ -134,15 +165,23 @@ const OptionsCreate = struct {
     filepaths: ?std.ArrayList([]const u8) = null,
 };
 
+const OptionsUpload = struct {
+    verify_password: ?[]const u8 = null,
+    target_paste_name: ?[]const u8 = null,
+    filepaths: ?std.ArrayList([]const u8) = null,
+};
+
 allocator: Allocator,
 base_url: ?[]const u8 = null,
 token: ?[]const u8 = null,
 mode: ?Mode = null,
 args: std.ArrayList([]const u8),
+unknown_args: std.ArrayList([]const u8),
 
 options_update: OptionsUpdate = .{},
 options_create: OptionsCreate = .{},
 options_reset: OptionsReset = .{},
+options_upload: OptionsUpload = .{},
 
 pub fn init(allocator: Allocator) !Args {
     var iter = try std.process.argsWithAllocator(allocator);
@@ -156,6 +195,7 @@ pub fn init(allocator: Allocator) !Args {
     return .{
         .allocator = allocator,
         .args = args,
+        .unknown_args = try std.ArrayList([]const u8).initCapacity(allocator, 8),
     };
 }
 
@@ -172,6 +212,12 @@ pub fn deinit(self: *Args) void {
         var f = filepaths;
         f.deinit(self.allocator);
     }
+    if (self.options_upload.filepaths) |filepaths| {
+        var f = filepaths;
+        f.deinit(self.allocator);
+    }
+
+    self.unknown_args.deinit(self.allocator);
 
     for (self.args.items) |item| {
         self.allocator.free(item);
@@ -277,7 +323,7 @@ inline fn assignValueByType(
     }
 }
 
-inline fn actionFixItem(
+inline fn actionRequiredItem(
     comptime field_name: []const u8,
     comptime desc: []const u8,
 ) Item {
@@ -387,10 +433,10 @@ inline fn helpItem(
                 var options: usize = 0;
                 inline for (items.*) |item| {
                     const s = itemNameAndAliasWidth(&item);
-                    if (item.children.len == 0) {
-                        options = @max(options, s);
-                    } else {
+                    if (item.isSubcommandItem()) {
                         subcommand = @max(subcommand, s);
+                    } else {
+                        options = @max(options, s);
                     }
                 }
                 size = @max(options, subcommand);
@@ -398,15 +444,21 @@ inline fn helpItem(
             }
 
             inline fn itemNameAndAliasWidth(item: *const Item) usize {
-                var size: usize = 0;
-                size += item.name.len;
+                var size: usize = item.name.len;
                 inline for (item.alias) |a| {
                     size += 2;
                     size += a.len;
                 }
-                if (item.field_name.len != 0 and item.children.len == 0 and item.length != 0) {
+                if (item.field_name.len != 0 and !item.isSubcommandItem() and item.length != 0) {
                     size += getItemRealFieldName(item).len;
                     size += 3;
+                } else if (item.isSubcommandItem()) {
+                    inline for (item.children.*) |child| {
+                        if (child.isRequiredItem()) {
+                            size += getItemRealFieldName(&child).len;
+                            size += 3;
+                        }
+                    }
                 }
                 return size;
             }
@@ -426,11 +478,20 @@ inline fn helpItem(
                 var size: usize = item.name.len;
 
                 try writer.print("{s}", .{item.name});
-                if (item.field_name.len != 0 and item.children.len == 0 and item.length != 0) {
+                if (item.field_name.len != 0 and !item.isSubcommandItem() and item.length != 0) {
                     const field_name = getItemRealFieldName(item);
                     size += field_name.len;
                     size += 3;
-                    try writer.print(" [{s}]", .{field_name});
+                    try writer.print(" <{s}>", .{field_name});
+                } else if (item.isSubcommandItem()) {
+                    inline for (item.children.*) |child| {
+                        if (child.isRequiredItem()) {
+                            const field_name = getItemRealFieldName(&child);
+                            size += field_name.len;
+                            size += 3;
+                            try writer.print(" <{s}>", .{field_name});
+                        }
+                    }
                 }
                 inline for (item.alias) |a| {
                     try writer.print(", {s}", .{a});
@@ -447,6 +508,7 @@ inline fn helpItem(
                 item: *const Item,
                 width: usize,
             ) !void {
+                @setEvalBranchQuota(2000);
                 try writer.writeAll(prefix);
                 const size = try itemNameAndAlias(writer, item);
                 try writer.writeBytesNTimes(" ", width - size);
@@ -464,31 +526,21 @@ inline fn helpItem(
                 defer text.deinit(allocator);
 
                 var writer = text.writer(allocator);
-                const basename = std.fs.path.basename(args.args.items[0]);
+                const basename = args.args.items[0];
                 try writer.print(
-                    \\Usage: {s} [options] [command] [command options]
-                    \\
-                    \\Examples:
-                    \\  
-                    \\  Create Paste:
-                    \\    {s} create --content "I am new paste"
-                    \\    {s} create -c "I am new paste"
-                    \\
-                    \\  Update Paste Named `test`:
-                    \\    {s} update --name "test" --content "Updated Content"
-                    \\    {s} u -n "test" -c "Updated Content"
+                    \\Usage: {s} [options...] <command> [command options...]
                     \\
                     \\Options:
                     \\
                     \\
-                , .{ basename, basename, basename, basename, basename });
+                , .{basename});
 
                 // width
                 const subcommand, const options, _ = maxItemNameAndAliasWidth(&ITEMS);
 
                 // no children
                 inline for (ITEMS) |item| {
-                    if (item.children.len == 0) {
+                    if (!item.isSubcommandItem()) {
                         try printItemInSameWidth(&writer, "  ", &item, options + 4);
                     }
                 }
@@ -500,18 +552,39 @@ inline fn helpItem(
                     \\
                 , .{});
                 inline for (ITEMS) |item| {
-                    if (item.children.len != 0) {
+                    if (item.isSubcommandItem()) {
                         // subcommands
                         try writer.print("\n", .{});
-                        try printItemInSameWidth(&writer, "  ", &item, subcommand + 4);
+                        try printItemInSameWidth(&writer, "  ", &item, subcommand + 8);
 
                         // options
                         _, const children_opts, _ = maxItemNameAndAliasWidth(item.children);
                         inline for (item.children.*) |child| {
-                            try printItemInSameWidth(&writer, "    ", &child, children_opts + 4);
+                            if (!child.isRequiredItem()) {
+                                try printItemInSameWidth(&writer, "    ", &child, children_opts + 4);
+                            }
                         }
                     }
                 }
+
+                try writer.print(
+                    \\
+                    \\Examples:
+                    \\
+                    \\  Create Paste:
+                    \\    {s} create "I am new paste"
+                    \\    {s} create "I am private paste" --private
+                    \\    {s} create "I am readonly and has name" --name "test" -r
+                    \\
+                    \\  Update Paste:
+                    \\    {s} update test --content "Updated Content"
+                    \\    {s} u "test" -c "Updated Content"
+                    \\
+                    \\  Upload File:
+                    \\    {s} upload "test" -f /path/to/file1 -f "/path to/file 2"
+                    \\    {s} upload "test" --password "123456" --file "/path/to/file"
+                    \\
+                , .{ basename, basename, basename, basename, basename, basename, basename });
 
                 std.log.info("\n{s}", .{text.items});
             }
@@ -526,8 +599,16 @@ inline fn handleCommandItems(
     comptime field_path: []const u8,
     params: []const []const u8,
 ) !void {
+    const required_item_count = blk: {
+        inline for (items, 0..) |child, idx| {
+            if (!child.isRequiredItem())
+                break :blk idx;
+        }
+        break :blk 0;
+    };
+
     var i: usize = 0;
-    var next_fixed_item_idx: usize = 0;
+    var next_required_item_idx: usize = 0;
     while (i < params.len) {
         const param = params[i];
         var found = false;
@@ -538,17 +619,15 @@ inline fn handleCommandItems(
 
         blk: {
             inline for (items, 0..) |child, item_idx| {
-                const is_fix_item = child.name.len == 0;
-
-                if (is_fix_item) {
-                    if (item_idx == next_fixed_item_idx) {
+                if (child.isRequiredItem()) {
+                    if (item_idx == next_required_item_idx) {
                         try child.handle(
                             args,
                             &child,
                             next_field_path,
                             params[i .. i + 1],
                         );
-                        next_fixed_item_idx += 1;
+                        next_required_item_idx += 1;
                         found = true;
                         break :blk;
                     }
@@ -570,6 +649,12 @@ inline fn handleCommandItems(
         i += 1;
         if (!found) {
             std.log.debug("Ignore unknown parameter: {s}", .{param});
+            try args.unknown_args.append(args.allocator, param);
         }
+    }
+
+    if (next_required_item_idx != required_item_count) {
+        std.log.debug("Missing required parameters when handle field: {s}", .{field_name orelse ""});
+        return error.MissingRequiredParameters;
     }
 }
