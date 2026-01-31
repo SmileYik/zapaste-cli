@@ -56,15 +56,6 @@ const Item = struct {
     }
 };
 
-// Args mode
-const Mode = enum {
-    help,
-    upload,
-    create,
-    update,
-    reset,
-};
-
 const EMPTY_ITEMS: []const Item = &.{};
 const ITEMS: []const Item = &.{
     helpItem("--help", &.{"-h"}, "查看帮助", &ITEMS),
@@ -177,18 +168,29 @@ const OptionsUpload = struct {
     filepaths: ?std.ArrayList([]const u8) = null,
 };
 
+// Args mode
+const Mode = enum {
+    help,
+    upload,
+    create,
+    update,
+    reset,
+};
+
+const ModeInfo = union(Mode) {
+    help: OptionsHelp,
+    upload: OptionsUpload,
+    create: OptionsCreate,
+    update: OptionsUpdate,
+    reset: OptionsReset,
+};
+
 allocator: Allocator,
 base_url: ?[]const u8 = null,
 token: ?[]const u8 = null,
-mode: ?Mode = null,
+mode: ?ModeInfo = null,
 args: std.ArrayList([]const u8),
 unknown_args: std.ArrayList([]const u8),
-
-options_update: OptionsUpdate = .{},
-options_create: OptionsCreate = .{},
-options_reset: OptionsReset = .{},
-options_upload: OptionsUpload = .{},
-options_help: OptionsHelp = .{},
 
 pub fn init(allocator: Allocator) !Args {
     var iter = try std.process.argsWithAllocator(allocator);
@@ -255,6 +257,15 @@ inline fn setField(self: *Args, field_path: []const u8, value: []const u8) !void
     );
 }
 
+inline fn nextDotPosition(comptime field_path: []const u8) ?usize {
+    return comptime blk: {
+        for (field_path, 0..) |char, idx| {
+            if (char == '.') break :blk idx;
+        }
+        break :blk null;
+    };
+}
+
 /// set field value of `instance`
 inline fn setFieldRecursive(
     self: *Args,
@@ -262,18 +273,13 @@ inline fn setFieldRecursive(
     comptime field_path: []const u8,
     value: []const u8,
 ) !void {
-    const dot_idx: ?usize = comptime blk: {
-        for (field_path, 0..) |char, idx| {
-            if (char == '.') break :blk idx;
-        }
-        break :blk null;
-    };
-
-    if (dot_idx) |idx| {
+    if (nextDotPosition(field_path)) |idx| {
         const name = field_path[0..idx];
         const path = field_path[idx + 1 ..];
+        const is_optional = @typeInfo(@TypeOf(instance.*)) == .optional;
+
         try self.setFieldRecursive(
-            &@field(instance.*, name),
+            &@field(if (is_optional) instance.*.? else instance.*, name),
             path,
             value,
         );
@@ -293,10 +299,8 @@ inline fn assignValue(self: *Args, instance: anytype, comptime field_name: []con
                     @field(instance, field_name) = try std.ArrayList([]const u8).initCapacity(self.allocator, 16);
                 }
                 try (@field(instance, field_name)).?.append(self.allocator, value);
-            } else {
-                if (@field(instance, field_name) == null) {
-                    try assignValueByType(instance, field_name, opt.child, value);
-                }
+            } else if (@field(instance, field_name) == null) {
+                try assignValueByType(instance, field_name, opt.child, value);
             }
         },
         else => {
@@ -412,14 +416,17 @@ inline fn subcommandItem(
                 comptime field_path: []const u8,
                 params: []const []const u8,
             ) !void {
+
+                // init mode data at first
+                @field(args, "mode") = @unionInit(ModeInfo, name, .{});
+
                 try handleCommandItems(
                     args,
                     item.children.*,
-                    item.field_name,
+                    "mode." ++ name,
                     field_path,
                     params,
                 );
-                try args.setField(".mode", name);
             }
         }.h,
     };
@@ -597,8 +604,11 @@ inline fn helpItem(
                     \\
                 , .{ basename, basename, basename, basename, basename, basename, basename });
 
-                args.mode = .help;
-                args.options_help.help_message = text;
+                args.mode = .{
+                    .help = .{
+                        .help_message = text,
+                    },
+                };
             }
         }.h,
     };

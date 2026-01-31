@@ -25,6 +25,13 @@ pub fn main() !void {
     var args = try zapaste_cli.Args.init(std.heap.page_allocator);
     try args.parseArgs();
     if (args.mode == null) return;
-    std.debug.print("mode: {any}\n", .{args.mode});
-    std.debug.print("{any}\n{any}\n", .{ args.options_update, args.options_update.filepaths.?.items });
+    switch (args.mode.?) {
+        .help => |h| {
+            std.debug.print("{s}\n", .{h.help_message.?.items});
+        },
+        .create => |c| {
+            std.debug.print("{any}", .{c.paste});
+        },
+        else => {},
+    }
 }
