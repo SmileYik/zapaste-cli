@@ -50,6 +50,9 @@ const Item = struct {
 
 const Mode = enum {
     upload,
+    create,
+    update,
+    reset,
 };
 
 const EMPTY_ITEMS: []const Item = &.{};
@@ -57,7 +60,29 @@ const ITEMS: []const Item = &.{
     helpItem("--help", &.{"-h"}, "查看帮助", &ITEMS),
     actionSetItem("base_url", "--url", &.{"-u"}, "设置基础URL"),
     actionSetItem("token", "--token", &.{"-t"}, "设置Token"),
-    subcommandItem("options_upload", "upload", &.{"u"}, "上传文件至剪切板.", &(&[_]Item{
+    subcommandItem("options_update", "update", &.{"u"}, "上传文件至剪切板.", &(&[_]Item{
+        ITEM_FILEPATHS,
+        ITEM_PASTE_NAME,
+        ITEM_PASTE_PASSWORD,
+        ITEM_PASTE_NEW_NAME,
+        ITEM_PASTE_NEW_PASSWORD_REAL,
+        ITEM_PASTE_CONTENT,
+        ITEM_PASTE_CONTENT_TYPE,
+        ITEM_PASTE_PRIVATE,
+        ITEM_PASTE_READ_ONLY,
+        ITEM_PASTE_BURN_AFTER_READS,
+    })),
+    subcommandItem("options_create", "create", &.{"c"}, "新建剪切板, 可以指定剪切板名称但是不保证剪切板名称为设定好的名称.", &(&[_]Item{
+        ITEM_FILEPATHS,
+        ITEM_PASTE_NEW_NAME_REAL,
+        ITEM_PASTE_NEW_PASSWORD_REAL,
+        ITEM_PASTE_CONTENT,
+        ITEM_PASTE_CONTENT_TYPE,
+        ITEM_PASTE_PRIVATE,
+        ITEM_PASTE_READ_ONLY,
+        ITEM_PASTE_BURN_AFTER_READS,
+    })),
+    subcommandItem("options_reset", "reset", &.{"r"}, "重置剪切板.", &(&[_]Item{
         ITEM_FILEPATHS,
         ITEM_PASTE_NAME,
         ITEM_PASTE_PASSWORD,
@@ -66,6 +91,8 @@ const ITEMS: []const Item = &.{
         ITEM_PASTE_PRIVATE,
         ITEM_PASTE_READ_ONLY,
         ITEM_PASTE_BURN_AFTER_READS,
+        actionSetBoolItem("create_if_not_exists", "--create-if-not-exists", &.{ "-C", "-cine" }, "在剪切板不存在时创建它"),
+        actionSetBoolItem("clean_attachments", "--clean-attachments", &.{ "-Ca", "-ca" }, "清空剪切板附件"),
     })),
 };
 
@@ -74,8 +101,11 @@ const ITEM_FILEPATHS = actionSetItem("filepaths", "--file", &.{"-F"}, "添加要
 const ITEM_PASTE_NAME = actionSetItem("target_paste_name", "--name", &.{"-n"}, "剪切板名称");
 const ITEM_PASTE_PASSWORD = actionSetItem("verify_password", "--password", &.{"-p"}, "剪切板密码");
 // paste new name and password
-const ITEM_PASTE_NEW_NAME = actionSetItem("paste.name", "--new-name", &.{"-nn"}, "设置剪切板新名称");
+const ITEM_PASTE_NEW_NAME = actionSetItem("paste.name", "--new-name", &.{"-nn"}, "设置剪切板新名称, 不保证新名称一定为所设置的名称");
 const ITEM_PASTE_NEW_PASSWORD = actionSetItem("paste.password", "--new-password", &.{"-np"}, "设置剪切板新密码");
+// paste new name and password with real fields in Paste type.
+const ITEM_PASTE_NEW_NAME_REAL = actionSetItem("paste.name", "--name", &.{"-n"}, "设置剪切板新名称, 不保证新名称一定为所设置的名称");
+const ITEM_PASTE_NEW_PASSWORD_REAL = actionSetItem("paste.password", "--password", &.{"-p"}, "剪切板密码");
 // other paste things
 const ITEM_PASTE_CONTENT = actionSetItem("paste.content", "--content", &.{"-c"}, "设置剪切板内容");
 const ITEM_PASTE_CONTENT_TYPE = actionSetItem("paste.content_type", "--content-type", &.{"-ct"}, "设置剪切板内容类型");
@@ -83,11 +113,25 @@ const ITEM_PASTE_PRIVATE = actionSetBoolItem("paste.private", "--private", &.{"-
 const ITEM_PASTE_READ_ONLY = actionSetBoolItem("paste.read_only", "--readonly", &.{"--r"}, "设置剪切板仅可读");
 const ITEM_PASTE_BURN_AFTER_READS = actionSetItem("paste.burn_after_reads", "--burn-after-reads", &.{"-bar"}, "设置剪切板阅读量到达指定数量后自动销毁");
 
-const OptionsUpload = struct {
+const OptionsUpdate = struct {
     paste: api.Paste = .{},
     filepaths: ?std.ArrayList([]const u8) = null,
     verify_password: ?[]const u8 = null,
     target_paste_name: ?[]const u8 = null,
+};
+
+const OptionsReset = struct {
+    paste: api.Paste = .{},
+    filepaths: ?std.ArrayList([]const u8) = null,
+    verify_password: ?[]const u8 = null,
+    target_paste_name: ?[]const u8 = null,
+    create_if_not_exists: bool = false,
+    clean_attachments: bool = false,
+};
+
+const OptionsCreate = struct {
+    paste: api.Paste = .{},
+    filepaths: ?std.ArrayList([]const u8) = null,
 };
 
 allocator: Allocator,
@@ -96,7 +140,9 @@ token: ?[]const u8 = null,
 mode: ?Mode = null,
 args: std.ArrayList([]const u8),
 
-options_upload: OptionsUpload = .{},
+options_update: OptionsUpdate = .{},
+options_create: OptionsCreate = .{},
+options_reset: OptionsReset = .{},
 
 pub fn init(allocator: Allocator) !Args {
     var iter = try std.process.argsWithAllocator(allocator);
@@ -115,6 +161,14 @@ pub fn init(allocator: Allocator) !Args {
 
 pub fn deinit(self: *Args) void {
     if (self.options_upload.filepaths) |filepaths| {
+        var f = filepaths;
+        f.deinit(self.allocator);
+    }
+    if (self.options_create.filepaths) |filepaths| {
+        var f = filepaths;
+        f.deinit(self.allocator);
+    }
+    if (self.options_reset.filepaths) |filepaths| {
         var f = filepaths;
         f.deinit(self.allocator);
     }
@@ -410,13 +464,24 @@ inline fn helpItem(
                 defer text.deinit(allocator);
 
                 var writer = text.writer(allocator);
+                const basename = std.fs.path.basename(args.args.items[0]);
                 try writer.print(
                     \\Usage: {s} [options] [command] [command options]
+                    \\
+                    \\Examples:
+                    \\  
+                    \\  Create Paste:
+                    \\    {s} create --content "I am new paste"
+                    \\    {s} create -c "I am new paste"
+                    \\
+                    \\  Update Paste Named `test`:
+                    \\    {s} update --name "test" --content "Updated Content"
+                    \\    {s} u -n "test" -c "Updated Content"
                     \\
                     \\Options:
                     \\
                     \\
-                , .{args.args.items[0]});
+                , .{ basename, basename, basename, basename, basename });
 
                 // width
                 const subcommand, const options, _ = maxItemNameAndAliasWidth(&ITEMS);
