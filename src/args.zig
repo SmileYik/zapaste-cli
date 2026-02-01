@@ -4,6 +4,66 @@ const Allocator = std.mem.Allocator;
 
 const Args = @This();
 
+// Public Options
+
+pub const OptionsHelp = struct {
+    help_message: ?std.ArrayList(u8) = null,
+};
+
+pub const OptionsConfig = struct {
+    url: ?[]const u8 = null,
+    user: ?[]const u8 = null,
+    password: ?[]const u8 = null,
+};
+
+pub const OptionsUpdate = struct {
+    paste: api.Paste = .{},
+    filepaths: ?std.ArrayList([]const u8) = null,
+    verify_password: ?[]const u8 = null,
+    target_paste_name: ?[]const u8 = null,
+};
+
+pub const OptionsReset = struct {
+    paste: api.Paste = .{},
+    filepaths: ?std.ArrayList([]const u8) = null,
+    verify_password: ?[]const u8 = null,
+    target_paste_name: ?[]const u8 = null,
+    create_if_not_exists: bool = false,
+    clean_attachments: bool = false,
+};
+
+pub const OptionsCreate = struct {
+    paste: api.Paste = .{},
+    filepaths: ?std.ArrayList([]const u8) = null,
+};
+
+pub const OptionsUpload = struct {
+    verify_password: ?[]const u8 = null,
+    target_paste_name: ?[]const u8 = null,
+    filepaths: ?std.ArrayList([]const u8) = null,
+};
+
+// Args mode
+pub const Mode = enum {
+    help,
+    upload,
+    create,
+    update,
+    reset,
+    config,
+};
+
+pub const ModeInfo = union(Mode) {
+    help: OptionsHelp,
+    upload: OptionsUpload,
+    create: OptionsCreate,
+    update: OptionsUpdate,
+    reset: OptionsReset,
+    config: OptionsConfig,
+};
+
+// Command Parse
+
 const Item = struct {
     /// based field name
     field_name: []const u8,
@@ -59,8 +119,13 @@ const Item = struct {
 const EMPTY_ITEMS: []const Item = &.{};
 const ITEMS: []const Item = &.{
     helpItem("--help", &.{"-h"}, "查看帮助", &ITEMS),
-    actionSetItem("base_url", "--url", &.{"-u"}, "设置基础URL"),
-    actionSetItem("token", "--token", &.{"-t"}, "设置Token"),
+    actionSetItem("base_url", "--url", &.{"-u"}, "设置API地址, 将会临时覆盖配置文件."),
+    actionSetItem("token", "--token", &.{"-t"}, "设置API的验证Token(如果API需要的话)"),
+    subcommandItem("options_config", "config", &.{}, "设置全局API的URL地址, 若API需要身份验证则需要附带设置用户名和密码", &(&[_]Item{
+        actionRequiredItem("url", "设置API地址, 若API需要身份验证则需要附带设置用户名和密码"),
+        actionSetItem("user", "--user", &.{"-u"}, "设置验证用户, 需要配套带入密码. 仅当API需要全局身份验证时使用"),
+        actionSetItem("password", "--password", &.{"-p"}, "设置验证密码, 仅当API需要全局身份验证时使用"),
+    })),
     subcommandItem("options_update", "update", &.{"u"}, "更新剪切板.", &(&[_]Item{
         actionRequiredItem("target_paste_name", "剪切板名称"),
         ITEM_FILEPATHS,
@@ -136,54 +201,6 @@ const ITEM_PASTE_CONTENT_TYPE = actionSetItem("paste.content_type", "--content-t
 const ITEM_PASTE_PRIVATE = actionSetBoolItem("paste.private", "--private", &.{"-pr"}, "设置剪切板为私人可见");
 const ITEM_PASTE_READ_ONLY = actionSetBoolItem("paste.read_only", "--readonly", &.{"-r"}, "设置剪切板仅可读, 后续将无法修改此剪切板内容");
 const ITEM_PASTE_BURN_AFTER_READS = actionSetItem("paste.burn_after_reads", "--burn-after-reads", &.{ "-bar", "-B" }, "设置剪切板阅读量到达指定数量后自动销毁");
-
-const OptionsHelp = struct {
-    help_message: ?std.ArrayList(u8) = null,
-};
-
-const OptionsUpdate = struct {
-    paste: api.Paste = .{},
-    filepaths: ?std.ArrayList([]const u8) = null,
-    verify_password: ?[]const u8 = null,
-    target_paste_name: ?[]const u8 = null,
-};
-
-const OptionsReset = struct {
-    paste: api.Paste = .{},
-    filepaths: ?std.ArrayList([]const u8) = null,
-    verify_password: ?[]const u8 = null,
-    target_paste_name: ?[]const u8 = null,
-    create_if_not_exists: bool = false,
-    clean_attachments: bool = false,
-};
-
-const OptionsCreate = struct {
-    paste: api.Paste = .{},
-    filepaths: ?std.ArrayList([]const u8) = null,
-};
-
-const OptionsUpload = struct {
-    verify_password: ?[]const u8 = null,
-    target_paste_name: ?[]const u8 = null,
-    filepaths: ?std.ArrayList([]const u8) = null,
-};
-
-// Args mode
-const Mode = enum {
-    help,
-    upload,
-    create,
-    update,
-    reset,
-};
-
-const ModeInfo = union(Mode) {
-    help: OptionsHelp,
-    upload: OptionsUpload,
-    create: OptionsCreate,
-    update: OptionsUpdate,
-    reset: OptionsReset,
-};
 
 allocator: Allocator,
 base_url: ?[]const u8 = null,
