@@ -226,26 +226,29 @@ pub fn init(allocator: Allocator) !Args {
 }
 
 pub fn deinit(self: *Args) void {
-    if (self.options_upload.filepaths) |filepaths| {
-        var f = filepaths;
-        f.deinit(self.allocator);
-    }
-    if (self.options_create.filepaths) |filepaths| {
-        var f = filepaths;
-        f.deinit(self.allocator);
-    }
-    if (self.options_reset.filepaths) |filepaths| {
-        var f = filepaths;
-        f.deinit(self.allocator);
-    }
-    if (self.options_upload.filepaths) |filepaths| {
-        var f = filepaths;
-        f.deinit(self.allocator);
-    }
-    if (self.options_help.help_message) |str| {
-        var a = str;
-        a.deinit(self.allocator);
-    }
+    if (self.mode) |mode| switch (mode) {
+        .upload => |opt| if (opt.filepaths) |filepaths| {
+            var f = filepaths;
+            f.deinit(self.allocator);
+        },
+        .create => |opt| if (opt.filepaths) |filepaths| {
+            var f = filepaths;
+            f.deinit(self.allocator);
+        },
+        .reset => |opt| if (opt.filepaths) |filepaths| {
+            var f = filepaths;
+            f.deinit(self.allocator);
+        },
+        .update => |opt| if (opt.filepaths) |filepaths| {
+            var f = filepaths;
+            f.deinit(self.allocator);
+        },
+        .help => |opt| if (opt.help_message) |message| {
+            var f = message;
+            f.deinit(self.allocator);
+        },
+        else => {},
+    };
 
     self.unknown_args.deinit(self.allocator);
 

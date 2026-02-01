@@ -8,11 +8,16 @@ pub const ConfigJson = struct {
     token: ?[]const u8 = null,
 };
 
-allocator: Allocator = null,
+allocator: Allocator,
 data: ConfigJson = .{},
 
-pub fn init(allocator: Allocator) Config {
-    return .{ .allocator = allocator };
+pub fn init(allocator: Allocator) !Config {
+    var config: Config = .{ .allocator = allocator };
+    config.load() catch |e| switch (e) {
+        error.FileNotFound => {},
+        else => return e,
+    };
+    return config;
 }
 
 pub fn deinit(self: Config) void {
@@ -24,7 +29,7 @@ pub fn deinit(self: Config) void {
     }
 }
 
-pub fn load(self: Config) !void {
+inline fn load(self: *Config) !void {
     var file = try self.openConfigFile(.read_only);
     defer file.close();
 
@@ -38,20 +43,28 @@ pub fn load(self: Config) !void {
         .{ .ignore_unknown_fields = true },
     );
     defer parsed.deinit();
-    self.setConfigData(parsed.value);
+    try self.setConfigData(parsed.value);
 }
 
-pub fn store(self: Config) !void {
+inline fn store(self: Config) !void {
     const fmt = std.json.fmt(self.data, .{ .whitespace = .indent_4 });
     const content = try std.fmt.allocPrint(self.allocator, "{f}", .{fmt});
     defer self.allocator.free(content);
 
-    var file = try self.openConfigFile(.write_only);
-    defer file.close();
-    try file.writeAll(content);
+    const filepath = try self.getConfigPath(self.allocator);
+    defer self.allocator.free(filepath);
+    try std.fs.cwd().writeFile(.{
+        .data = content,
+        .flags = .{ .truncate = true },
+        .sub_path = filepath,
+    });
 }
 
-pub fn setConfigData(self: Config, config: ConfigJson) !void {
+pub fn setConfigData(self: *Config, config: ConfigJson) !void {
+    self.deinit();
+    self.data.base_url = null;
+    self.data.token = null;
+
     self.data.base_url = if (config.base_url) |str|
         try self.allocator.dupe(u8, str)
     else
@@ -61,6 +74,8 @@ pub fn setConfigData(self: Config, config: ConfigJson) !void {
         try self.allocator.dupe(u8, str)
     else
         null;
+
+    try self.store();
 }
 
 inline fn openConfigFile(self: Config, mode: std.fs.File.OpenMode) !std.fs.File {
@@ -72,4 +87,10 @@ inline fn openConfigFile(self: Config, mode: std.fs.File.OpenMode) !std.fs.File 
     var buffer: [4 * 1024]u8 = undefined;
     const config_file = try std.fmt.bufPrint(&buffer, "{s}/config.json", .{dir});
     return std.fs.cwd().openFile(config_file, .{ .mode = mode });
+}
+
+inline fn getConfigPath(self: Config, allocator: Allocator) ![]const u8 {
+    const dir = try std.fs.getAppDataDir(self.allocator, "zapaste-cli");
+    defer self.allocator.free(dir);
+    return try std.fmt.allocPrint(allocator, "{s}/config.json", .{dir});
 }

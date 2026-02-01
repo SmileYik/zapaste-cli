@@ -45,11 +45,10 @@ pub fn uploadFiles(
 
 /// set global config.
 pub fn setConfig(allocator: Allocator, config_options: Args.OptionsConfig) !Config {
-    const config = Config.init(allocator);
+    var config = try Config.init(allocator);
     defer config.deinit();
 
-    try config.load();
-    const data = config.data;
+    var data = config.data;
 
     if (config_options.url) |url| {
         data.base_url = url;
@@ -63,10 +62,7 @@ pub fn setConfig(allocator: Allocator, config_options: Args.OptionsConfig) !Conf
         }
     }
     try config.setConfigData(data);
-
-    const return_config = Config.init(allocator);
-    try return_config.load();
-    return return_config;
+    return try Config.init(allocator);
 }
 
 pub fn handleOptionsUpdate(
@@ -88,13 +84,14 @@ pub fn handleOptionsReset(
 ) !PasteModelResult {
     const paste_name = options.target_paste_name.?;
     const password = options.verify_password;
-    const paste = options.paste;
+    var paste = options.paste;
     const filepaths = if (options.filepaths) |paths| paths.items else null;
     try checkFilePathExists(filepaths);
 
     if (options.clean_attachments) {
         paste.attachements = "";
     }
+    paste.name = paste.name orelse paste_name;
 
     var parsed = try client.getPaste(paste_name, password);
     defer parsed.deinit();
@@ -103,9 +100,11 @@ pub fn handleOptionsReset(
     return if (result.code == 200)
         // update
         try client.updatePaste(paste_name, password, paste, filepaths)
+    else if (result.code == 401)
+        error.Unauthorized
     else if (options.create_if_not_exists)
         // create
-        try client.createPaste(paste, null)
+        try client.createPaste(paste, filepaths)
     else
         error.PasteIsNotExists;
 }

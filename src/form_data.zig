@@ -30,10 +30,16 @@ finished: bool,
 content_type: ?[]const u8 = null,
 
 pub fn init(allocator: Allocator) !Self {
+    const boundary = try randomBoundary(allocator, 16);
     return .{
         .allocator = allocator,
         .array = try Array.initCapacity(allocator, 4 * 1024),
-        .boundary = try randomBoundary(allocator, 16),
+        .boundary = boundary,
+        .content_type = try std.fmt.allocPrint(
+            allocator,
+            "multipart/form-data; boundary={s}",
+            .{boundary},
+        ),
         .finished = false,
     };
 }
@@ -116,13 +122,6 @@ pub fn getBody(self: *Self) ![]u8 {
 }
 
 pub fn getContentType(self: *Self) ![]const u8 {
-    if (self.content_type == null) {
-        self.content_type = try std.fmt.allocPrint(
-            self.allocator,
-            "multipart/form-data; boundary={s}",
-            .{self.boundary},
-        );
-    }
     return self.content_type.?;
 }
 

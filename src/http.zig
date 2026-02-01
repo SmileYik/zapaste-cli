@@ -32,7 +32,6 @@ pub inline fn request(
     options: RequestOptions,
 ) !std.json.Parsed(T) {
     const uri = try std.Uri.parse(options.url);
-    const client = options.client;
     const method = options.method;
     const allocator = options.allocator;
     const body = options.body orelse .None;
@@ -41,6 +40,11 @@ pub inline fn request(
             .{ .override = auth }
         else
             .default;
+
+    // we use a new client instance. because seems use the same client will occur issue when read body data.
+    var client_: std.http.Client = .{ .allocator = allocator };
+    const client = &client_;
+    defer client.deinit();
 
     std.log.debug(
         \\
@@ -65,6 +69,7 @@ pub inline fn request(
                 .accept_encoding = .{ .override = "" },
                 .authorization = authorization,
             },
+            .keep_alive = false,
         },
     );
     defer req.deinit();
@@ -85,12 +90,18 @@ pub inline fn request(
             req.headers.content_type = .{
                 .override = form.getContentType() catch "",
             };
-            try req.sendBodyComplete(form.getBody() catch "");
+            std.log.debug("****BodyStart\n{s}\n****BodyEnd", .{try form.getBody()});
+            try req.sendBodyComplete(try form.getBody());
         },
     }
 
     // receive
     var response = try req.receiveHead(&.{});
+
+    std.log.debug("Response {d}: {s}", .{
+        @intFromEnum(response.head.status),
+        response.head.status.phrase() orelse "",
+    });
     if (response.head.status.class() != .success) {
         var buffer: [4096]u8 = undefined;
         const error_msg = try std.fmt.bufPrint(&buffer,
@@ -117,7 +128,7 @@ pub inline fn request(
     // body
     var response_buffer: [4 * 1024]u8 = undefined;
     var reader = response.reader(&response_buffer);
-    var response_body = try std.ArrayList(u8).initCapacity(client.allocator, 10 * 1024 * 1024);
+    var response_body = try std.ArrayList(u8).initCapacity(allocator, 10 * 1024 * 1024);
     defer response_body.deinit(allocator);
 
     while (reader.takeArray(response_buffer.len)) |bytes| {
@@ -134,6 +145,6 @@ pub inline fn request(
         T,
         allocator,
         response_body.items,
-        .{ .ignore_unknown_fields = true },
+        .{ .ignore_unknown_fields = true, .allocate = .alloc_always },
     );
 }

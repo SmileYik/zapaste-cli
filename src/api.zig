@@ -77,7 +77,7 @@ pub const PasteClient = struct {
     }
 
     pub fn deinit(self: *PasteClient) void {
-        &self.client.deinit();
+        self.client.deinit();
     }
 
     /// Get public paste list.
