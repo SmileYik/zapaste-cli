@@ -3,6 +3,8 @@ const zapaste_cli = @import("zapaste_cli");
 
 const FALLBACK_API = "https://paste-demo.smileyik.eu.org";
 
+pub const std_options: std.Options = .{ .log_level = .info };
+
 pub fn simpleResultMessage(result: *const zapaste_cli.api.ApiResult(zapaste_cli.api.PasteModel)) void {
     if (result.message) |message| {
         if (result.code == 200) {
