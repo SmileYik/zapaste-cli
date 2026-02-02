@@ -82,6 +82,8 @@ pub fn appendFile(
         filepath,
         std.math.maxInt(usize),
     );
+    defer self.allocator.free(data);
+
     try self.appendFileData(key, .{
         .filename = filename,
         .data = data,
