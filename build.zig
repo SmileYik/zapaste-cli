@@ -1,4 +1,5 @@
 const std = @import("std");
+const package_info = @import("build.zig.zon");
 
 // Although this function looks imperative, it does not perform the build
 // directly and instead it mutates the build graph (`b`) that will be then
@@ -40,6 +41,11 @@ pub fn build(b: *std.Build) void {
         // which requires us to specify a target.
         .target = target,
     });
+
+    // config
+    const options = b.addOptions();
+    options.addOption([]const u8, "version", package_info.version);
+    mod.addImport("config", options.createModule());
 
     const zapaste = b.addModule("zapaste", .{
         .root_source_file = b.path("src/zapaste/root.zig"),

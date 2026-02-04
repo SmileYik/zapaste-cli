@@ -1,4 +1,5 @@
 const std = @import("std");
+const config = @import("config");
 const api = @import("api.zig");
 const Allocator = std.mem.Allocator;
 
@@ -118,7 +119,8 @@ const Item = struct {
 
 const EMPTY_ITEMS: []const Item = &.{};
 const ITEMS: []const Item = &.{
-    helpItem("--help", &.{"-h"}, "查看帮助", &ITEMS),
+    helpItem("--help", &.{"-h"}, "查看帮助"),
+    versionItem("--version", &.{"-v"}, "查看版本"),
     actionSetItem("base_url", "--url", &.{"-u"}, "设置API地址, 将会临时覆盖配置文件."),
     actionSetItem("token", "--token", &.{"-t"}, "设置API的验证Token(如果API需要的话)"),
     subcommandItem("options_config", "config", &.{}, "设置全局API的URL地址, 若API需要身份验证则需要附带设置用户名和密码", &(&[_]Item{
@@ -456,7 +458,6 @@ inline fn helpItem(
     comptime name: []const u8,
     comptime alias: []const []const u8,
     comptime desc: []const u8,
-    comptime _: *const []const Item,
 ) Item {
     return .{
         .name = name,
@@ -699,4 +700,46 @@ inline fn handleCommandItems(
         std.log.debug("Missing required parameters when handle field: {s}", .{field_name orelse ""});
         return error.MissingRequiredParameters;
     }
+}
+
+inline fn versionItem(
+    comptime name: []const u8,
+    comptime alias: []const []const u8,
+    comptime desc: []const u8,
+) Item {
+    return .{
+        .name = name,
+        .field_name = "",
+        .alias = alias,
+        .length = std.math.maxInt(u8),
+        .description = desc,
+        .handle = struct {
+            fn h(
+                args: *Args,
+                _: *const Item,
+                comptime _: []const u8,
+                _: []const []const u8,
+            ) !void {
+                const allocator = args.allocator;
+                var text = try std.ArrayList(u8).initCapacity(allocator, 4 * 1024);
+                errdefer text.deinit(allocator);
+
+                try text.writer(allocator).print(
+                    \\
+                    \\version: {s}
+                    \\zig version: {s}
+                    \\
+                , .{
+                    config.version,
+                    @import("builtin").zig_version_string,
+                });
+
+                args.mode = .{
+                    .help = .{
+                        .help_message = text,
+                    },
+                };
+            }
+        }.h,
+    };
 }
