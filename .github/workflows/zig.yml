@@ -97,5 +97,5 @@ jobs:
           allowUpdates: true
           draft: true
           generateReleaseNotes: true
-          artifacts: "downloaded-artifacts/*"
+          artifacts: "downloaded-artifacts/**/*.tar.gz"
           token: ${{ secrets.GITHUB_TOKEN }}
