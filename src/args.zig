@@ -728,7 +728,6 @@ inline fn versionItem(
                     \\
                     \\version: {s}
                     \\zig version: {s}
-                    \\
                 , .{
                     config.version,
                     @import("builtin").zig_version_string,
