@@ -2,6 +2,8 @@
 
 `zapaste-cli` 是一个基于 Zig 开发的命令行工具，旨在通过终端与 [Zapaste](https://github.com/SmileYik/zapaste) 服务进行交互。它完整支持 Zapaste 的 RESTful API，涵盖剪贴板的创建、更新、重置及文件上传等功能。
 
+[English](./README.md) | [中文](#zapaste-cli)
+
 ---
 
 ## 主要功能

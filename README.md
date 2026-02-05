@@ -2,6 +2,8 @@
 
 `zapaste-cli` is a command-line tool built with Zig designed to interact with [Zapaste](https://github.com/SmileYik/zapaste) services. It provides a terminal-based interface to manage pastes and files via the Zapaste RESTful API.
 
+[English](#zapaste-cli) | [中文](./README.zh.md)
+
 ---
 
 ## Key Features
@@ -20,18 +22,16 @@
 
 * **Global Configuration**: Set and save default API URLs and authentication credentials for persistent use.
 
-
-
 ---
 
 ## Installation
 
 ### Build from Source
 
-Ensure you have the Zig compiler installed:
+Ensure you have the Zig compiler (version is 0.15.2) installed:
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/SmileYik/zapaste-cli
 cd zapaste-cli
 zig build -Doptimize=ReleaseFast
 ```
