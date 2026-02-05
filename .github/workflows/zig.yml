@@ -61,13 +61,14 @@ jobs:
     - name: Build
       run: |
         zig build -Doptimize=ReleaseSmall -Dtarget=${{ matrix.target }}
-        mv "${{ github.workspace }}/zig-out/bin/" "${{ github.workspace }}/zig-out/${{ matrix.target }}/"
+        cd "${{ github.workspace }}/zig-out/bin/"
+        tar -czvf ${{ matrix.target }}.tar.gz *
 
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v4.6.2
       with:
         name: zapaste-cli-${{ matrix.target }}
-        path: "${{ github.workspace }}/zig-out/"
+        path: "${{ github.workspace }}/zig-out/bin/*.tar.gz"
 
   release:
 
@@ -85,6 +86,7 @@ jobs:
         uses: actions/download-artifact@v4.3.0
         with:
           path: "downloaded-artifacts"
+          merge-multiple: false
 
       - name: List Downloaded Artifacts
         run: ls -R downloaded-artifacts
