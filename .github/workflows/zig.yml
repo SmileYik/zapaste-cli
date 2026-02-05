@@ -61,12 +61,12 @@ jobs:
     - name: Build
       run: |
         zig build -Doptimize=ReleaseSmall -Dtarget=${{ matrix.target }}
-        mv "${{ github.workspace }}/zig-out/bin/" "${{ github.workspace }}/zig-out/{{ matrix.target }}/"
+        mv "${{ github.workspace }}/zig-out/bin/" "${{ github.workspace }}/zig-out/${{ matrix.target }}/"
 
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v4.6.2
       with:
-        name: zapaste-cli-{{ matrix.target }}
+        name: zapaste-cli-${{ matrix.target }}
         path: "${{ github.workspace }}/zig-out/"
 
   release:
